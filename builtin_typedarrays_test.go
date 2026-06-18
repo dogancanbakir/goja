@@ -368,6 +368,192 @@ func TestDataViewExportToBytes(t *testing.T) {
 	}
 }
 
+// The following tests guard against a regression where TypedArray.prototype.with
+// and toReversed wrote to the freshly allocated destination using the source
+// view's byte offset (ta.offset+k) instead of the plain index k. For views with
+// a non-zero byte offset this produced wrong results and an out-of-bounds write
+// past the destination buffer. See dop251/goja#712.
+
+func TestTypedArrayWithNonZeroOffset(t *testing.T) {
+	const SCRIPT = `
+	var buf = new ArrayBuffer(8);
+	var a = new Uint8Array(buf, 4, 4); // byteOffset 4, length 4
+	a[0] = 10; a[1] = 20; a[2] = 30; a[3] = 40;
+	var b = a.with(1, 99);
+	if (b.length !== 4) {
+		throw new Error("b.length=" + b.length);
+	}
+	if (b.byteOffset !== 0) {
+		throw new Error("b.byteOffset=" + b.byteOffset);
+	}
+	if (b[0] !== 10 || b[1] !== 99 || b[2] !== 30 || b[3] !== 40) {
+		throw new Error("b=[" + b.join(",") + "], expected [10,99,30,40]");
+	}
+	// source must be unchanged
+	if (a[0] !== 10 || a[1] !== 20 || a[2] !== 30 || a[3] !== 40) {
+		throw new Error("a corrupted=[" + a.join(",") + "]");
+	}
+	`
+	testScript(SCRIPT, _undefined, t)
+}
+
+func TestTypedArrayWithNonZeroOffsetNegativeIndex(t *testing.T) {
+	const SCRIPT = `
+	var buf = new ArrayBuffer(8);
+	var a = new Uint8Array(buf, 4, 4);
+	a[0] = 10; a[1] = 20; a[2] = 30; a[3] = 40;
+	var b = a.with(-1, 99); // index 3
+	if (b[0] !== 10 || b[1] !== 20 || b[2] !== 30 || b[3] !== 99) {
+		throw new Error("b=[" + b.join(",") + "], expected [10,20,30,99]");
+	}
+	`
+	testScript(SCRIPT, _undefined, t)
+}
+
+func TestTypedArrayToReversedNonZeroOffset(t *testing.T) {
+	const SCRIPT = `
+	var buf = new ArrayBuffer(8);
+	var a = new Uint8Array(buf, 4, 4);
+	a[0] = 1; a[1] = 2; a[2] = 3; a[3] = 4;
+	var b = a.toReversed();
+	if (b.length !== 4) {
+		throw new Error("b.length=" + b.length);
+	}
+	if (b.byteOffset !== 0) {
+		throw new Error("b.byteOffset=" + b.byteOffset);
+	}
+	if (b[0] !== 4 || b[1] !== 3 || b[2] !== 2 || b[3] !== 1) {
+		throw new Error("b=[" + b.join(",") + "], expected [4,3,2,1]");
+	}
+	if (a[0] !== 1 || a[1] !== 2 || a[2] !== 3 || a[3] !== 4) {
+		throw new Error("a corrupted=[" + a.join(",") + "]");
+	}
+	`
+	testScript(SCRIPT, _undefined, t)
+}
+
+func TestTypedArrayWithToReversedNonZeroOffsetAllTypes(t *testing.T) {
+	const SCRIPT = `
+	var types = [Int8Array, Uint8Array, Uint8ClampedArray, Int16Array, Uint16Array,
+		Int32Array, Uint32Array, Float32Array, Float64Array];
+	types.forEach(function(T) {
+		var bpe = T.BYTES_PER_ELEMENT;
+		var buf = new ArrayBuffer(bpe * 8);
+		var a = new T(buf, bpe * 4, 4); // offset of 4 elements, length 4
+		for (var i = 0; i < 4; i++) {
+			a[i] = i + 1;
+		}
+		var w = a.with(2, 99);
+		if (!(w instanceof T)) {
+			throw new Error(T.name + ": with returned wrong type");
+		}
+		if (w.length !== 4 || w.byteOffset !== 0) {
+			throw new Error(T.name + ": with length/offset=" + w.length + "/" + w.byteOffset);
+		}
+		if (w[0] !== 1 || w[1] !== 2 || w[2] !== 99 || w[3] !== 4) {
+			throw new Error(T.name + ": with=[" + w.join(",") + "], expected [1,2,99,4]");
+		}
+		if (a[0] !== 1 || a[1] !== 2 || a[2] !== 3 || a[3] !== 4) {
+			throw new Error(T.name + ": source corrupted by with=[" + a.join(",") + "]");
+		}
+		var r = a.toReversed();
+		if (r.length !== 4 || r.byteOffset !== 0) {
+			throw new Error(T.name + ": toReversed length/offset=" + r.length + "/" + r.byteOffset);
+		}
+		if (r[0] !== 4 || r[1] !== 3 || r[2] !== 2 || r[3] !== 1) {
+			throw new Error(T.name + ": toReversed=[" + r.join(",") + "], expected [4,3,2,1]");
+		}
+		if (a[0] !== 1 || a[1] !== 2 || a[2] !== 3 || a[3] !== 4) {
+			throw new Error(T.name + ": source corrupted by toReversed=[" + a.join(",") + "]");
+		}
+	});
+	`
+	testScript(SCRIPT, _undefined, t)
+}
+
+func TestTypedArrayWithToReversedBigIntNonZeroOffset(t *testing.T) {
+	const SCRIPT = `
+	[BigInt64Array, BigUint64Array].forEach(function(T) {
+		var bpe = T.BYTES_PER_ELEMENT; // 8
+		var buf = new ArrayBuffer(bpe * 8);
+		var a = new T(buf, bpe * 4, 4);
+		for (var i = 0; i < 4; i++) {
+			a[i] = BigInt(i + 1);
+		}
+		var w = a.with(2, 99n);
+		if (w[0] !== 1n || w[1] !== 2n || w[2] !== 99n || w[3] !== 4n) {
+			throw new Error(T.name + ": with=[" + w.join(",") + "], expected [1,2,99,4]");
+		}
+		var r = a.toReversed();
+		if (r[0] !== 4n || r[1] !== 3n || r[2] !== 2n || r[3] !== 1n) {
+			throw new Error(T.name + ": toReversed=[" + r.join(",") + "], expected [4,3,2,1]");
+		}
+		if (a[0] !== 1n || a[1] !== 2n || a[2] !== 3n || a[3] !== 4n) {
+			throw new Error(T.name + ": source corrupted=[" + a.join(",") + "]");
+		}
+	});
+	`
+	testScript(SCRIPT, _undefined, t)
+}
+
+// A view positioned at the very end of its buffer: the buggy implementation
+// would write past the end of the destination buffer (out-of-bounds).
+func TestTypedArrayWithToReversedOffsetAtBufferEnd(t *testing.T) {
+	const SCRIPT = `
+	var buf = new ArrayBuffer(16);
+	var a = new Uint8Array(buf, 12, 4); // last 4 bytes
+	a[0] = 1; a[1] = 2; a[2] = 3; a[3] = 4;
+	var w = a.with(0, 9);
+	if (w[0] !== 9 || w[1] !== 2 || w[2] !== 3 || w[3] !== 4) {
+		throw new Error("with=[" + w.join(",") + "], expected [9,2,3,4]");
+	}
+	var r = a.toReversed();
+	if (r[0] !== 4 || r[1] !== 3 || r[2] !== 2 || r[3] !== 1) {
+		throw new Error("toReversed=[" + r.join(",") + "], expected [4,3,2,1]");
+	}
+
+	// A wider element type with a non-zero offset near the end of the buffer.
+	var buf2 = new ArrayBuffer(32);
+	var f = new Float64Array(buf2, 16, 2); // offset 2 elements, length 2
+	f[0] = 1.5; f[1] = 2.5;
+	var fw = f.with(1, 3.5);
+	if (fw[0] !== 1.5 || fw[1] !== 3.5) {
+		throw new Error("fw=[" + fw.join(",") + "], expected [1.5,3.5]");
+	}
+	var fr = f.toReversed();
+	if (fr[0] !== 2.5 || fr[1] !== 1.5) {
+		throw new Error("fr=[" + fr.join(",") + "], expected [2.5,1.5]");
+	}
+	`
+	testScript(SCRIPT, _undefined, t)
+}
+
+// Ensures that with()/toReversed() on an offset view do not corrupt other views
+// sharing the same underlying buffer (the result must use a brand new buffer).
+func TestTypedArrayWithToReversedDoesNotTouchSourceBuffer(t *testing.T) {
+	const SCRIPT = `
+	var buf = new ArrayBuffer(8);
+	var head = new Uint8Array(buf, 0, 4);
+	var tail = new Uint8Array(buf, 4, 4);
+	head[0] = 100; head[1] = 101; head[2] = 102; head[3] = 103;
+	tail[0] = 1; tail[1] = 2; tail[2] = 3; tail[3] = 4;
+
+	var w = tail.with(0, 9);
+	var r = tail.toReversed();
+
+	if (w.buffer === buf || r.buffer === buf) {
+		throw new Error("result must not alias the source buffer");
+	}
+	if (head[0] !== 100 || head[1] !== 101 || head[2] !== 102 || head[3] !== 103) {
+		throw new Error("head corrupted=[" + head.join(",") + "]");
+	}
+	if (tail[0] !== 1 || tail[1] !== 2 || tail[2] !== 3 || tail[3] !== 4) {
+		throw new Error("tail corrupted=[" + tail.join(",") + "]");
+	}
+	`
+	testScript(SCRIPT, _undefined, t)
+}
+
 func TestTypedArraySubarraySet(t *testing.T) {
 	const SCRIPT = `
 	const u = new Uint8Array(4)
