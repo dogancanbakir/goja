@@ -3,7 +3,7 @@ package goja
 import (
 	"reflect"
 
-	"github.com/Mzack9999/goja/unistring"
+	"github.com/projectdiscovery/goja/unistring"
 )
 
 type destructKeyedSource struct {

@@ -7,9 +7,9 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/Mzack9999/goja/unistring"
+	"github.com/projectdiscovery/goja/unistring"
 
-	"github.com/Mzack9999/goja/parser"
+	"github.com/projectdiscovery/goja/parser"
 	"golang.org/x/text/collate"
 	"golang.org/x/text/language"
 	"golang.org/x/text/unicode/norm"

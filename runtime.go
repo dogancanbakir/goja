@@ -20,10 +20,10 @@ import (
 
 	ct "context"
 
-	js_ast "github.com/Mzack9999/goja/ast"
-	"github.com/Mzack9999/goja/file"
-	"github.com/Mzack9999/goja/parser"
-	"github.com/Mzack9999/goja/unistring"
+	js_ast "github.com/projectdiscovery/goja/ast"
+	"github.com/projectdiscovery/goja/file"
+	"github.com/projectdiscovery/goja/parser"
+	"github.com/projectdiscovery/goja/unistring"
 )
 
 const (

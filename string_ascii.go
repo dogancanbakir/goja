@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Mzack9999/goja/unistring"
+	"github.com/projectdiscovery/goja/unistring"
 )
 
 type asciiString string

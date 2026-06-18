@@ -1,6 +1,6 @@
 package goja
 
-import "github.com/Mzack9999/goja/unistring"
+import "github.com/projectdiscovery/goja/unistring"
 
 const propNameStack = "stack"
 

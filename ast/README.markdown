@@ -1,6 +1,6 @@
 # ast
 --
-    import "github.com/Mzack9999/goja/ast"
+    import "github.com/projectdiscovery/goja/ast"
 
 Package ast declares types representing a JavaScript AST.
 

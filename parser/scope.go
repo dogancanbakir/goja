@@ -1,8 +1,8 @@
 package parser
 
 import (
-	"github.com/Mzack9999/goja/ast"
-	"github.com/Mzack9999/goja/unistring"
+	"github.com/projectdiscovery/goja/ast"
+	"github.com/projectdiscovery/goja/unistring"
 )
 
 type _scope struct {
